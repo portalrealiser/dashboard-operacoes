@@ -96,6 +96,22 @@ async function initDB() {
       `, [mod.slug, mod.name, mod.description, mod.icon, mod.status, mod.order_index]);
     }
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS dashboard.rastreios_log (
+        id SERIAL PRIMARY KEY,
+        batch_id VARCHAR(100),
+        rastreio VARCHAR(100),
+        cep VARCHAR(20),
+        status VARCHAR(50),
+        order_id BIGINT,
+        order_name VARCHAR(50),
+        message TEXT,
+        date_from DATE,
+        date_to DATE,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
     console.log('Banco de dados inicializado com sucesso');
   } finally {
     client.release();

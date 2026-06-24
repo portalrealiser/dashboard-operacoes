@@ -27,10 +27,12 @@ app.use(session({
 const authRouter = require('./routes/auth');
 const dashboardRouter = require('./routes/dashboard');
 const apiRouter = require('./routes/api');
+const rastreiosRouter = require('./routes/modules/rastreios');
 
 app.use('/', authRouter);
 app.use('/', dashboardRouter);
 app.use('/api', apiRouter);
+app.use('/modulo/rastreios', rastreiosRouter);
 
 initDB().then(() => {
   app.listen(PORT, () => {
