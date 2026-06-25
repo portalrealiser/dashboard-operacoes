@@ -71,7 +71,7 @@ router.post('/processar', requireAuth, upload.single('planilha'), async (req, re
     }
 
     const batchId = `batch_${Date.now()}`;
-    const results = { success: 0, not_found: 0, error: 0, items: [] };
+    const results = { success: 0, already_fulfilled: 0, not_found: 0, error: 0, items: [] };
 
     // Buscar pedidos da Shopify no período
     const shopifyOrders = await fetchShopifyOrders(date_from, date_to);
@@ -83,7 +83,7 @@ router.post('/processar', requireAuth, upload.single('planilha'), async (req, re
       if (!rastreio || !cep) continue;
 
       try {
-        // Filtrar pedidos pelo CEP (unfulfilled OU fulfilled sem rastreio)
+        // Filtrar pedidos pelo CEP
         const matches = shopifyOrders.filter(order => {
           const orderCep = String(order.shipping_address?.zip || '').replace(/\D/g, '');
           return orderCep === cep;
@@ -91,8 +91,8 @@ router.post('/processar', requireAuth, upload.single('planilha'), async (req, re
 
         if (matches.length === 0) {
           results.not_found++;
-          results.items.push({ rastreio, cep, status: 'not_found', pedido: null, message: 'Nenhum pedido encontrado' });
-          await logResult(pool, batchId, rastreio, cep, 'not_found', null, null, 'Nenhum pedido encontrado', date_from, date_to);
+          results.items.push({ rastreio, cep, status: 'not_found', pedido: null, message: 'Nenhum pedido encontrado no período' });
+          await logResult(pool, batchId, rastreio, cep, 'not_found', null, null, 'Nenhum pedido encontrado no período', date_from, date_to);
           continue;
         }
 
@@ -115,10 +115,10 @@ router.post('/processar', requireAuth, upload.single('planilha'), async (req, re
         } else {
           const fulfillmentId = await getFulfillmentId(order.id);
           if (!fulfillmentId) {
-            // Pedido já tem rastreio vinculado — marcar como já processado
-            results.success++;
-            results.items.push({ rastreio, cep, status: 'success', pedido: order.name, message: `Rastreio já vinculado ao pedido ${order.name}` });
-            await logResult(pool, batchId, rastreio, cep, 'success', order.id, order.name, `Rastreio já vinculado ao pedido ${order.name}`, date_from, date_to);
+            // Pedido já tem rastreio vinculado
+            results.already_fulfilled++;
+            results.items.push({ rastreio, cep, status: 'already_fulfilled', pedido: order.name, message: `Pedido ${order.name} já possui rastreio` });
+            await logResult(pool, batchId, rastreio, cep, 'already_fulfilled', order.id, order.name, `Pedido ${order.name} já possui rastreio`, date_from, date_to);
             const idx = shopifyOrders.findIndex(o => o.id === order.id);
             if (idx !== -1) shopifyOrders[idx].fulfillment_status = 'done';
             await new Promise(r => setTimeout(r, 600));
@@ -127,7 +127,7 @@ router.post('/processar', requireAuth, upload.single('planilha'), async (req, re
           await updateTracking(fulfillmentId, rastreio);
         }
 
-        // Delay para respeitar rate limit da Shopify (2 calls/seg)
+        // Delay para respeitar rate limit da Shopify
         await new Promise(r => setTimeout(r, 600));
 
         results.success++;

@@ -91,27 +91,45 @@ async function processar() {
 
       document.getElementById('resultStats').innerHTML = `
         <div class="rstat rstat-green">
+          <div class="rstat-icon"><i class="ti ti-circle-check"></i></div>
           <div class="rstat-value">${r.success}</div>
-          <div class="rstat-label">Vinculados</div>
+          <div class="rstat-label">Vinculados agora</div>
+        </div>
+        <div class="rstat rstat-blue">
+          <div class="rstat-icon"><i class="ti ti-refresh"></i></div>
+          <div class="rstat-value">${r.already_fulfilled || 0}</div>
+          <div class="rstat-label">Já possuíam rastreio</div>
         </div>
         <div class="rstat rstat-amber">
+          <div class="rstat-icon"><i class="ti ti-search-off"></i></div>
           <div class="rstat-value">${r.not_found}</div>
           <div class="rstat-label">Não encontrados</div>
         </div>
         <div class="rstat rstat-red">
+          <div class="rstat-icon"><i class="ti ti-alert-circle"></i></div>
           <div class="rstat-value">${r.error}</div>
           <div class="rstat-label">Erros</div>
         </div>
       `;
 
-      const listHtml = r.items.map(item => `
+      const statusConfig = {
+        success: { dot: 'rdot-green', label: 'Vinculado' },
+        already_fulfilled: { dot: 'rdot-blue', label: 'Já possuía rastreio' },
+        not_found: { dot: 'rdot-amber', label: 'Não encontrado' },
+        error: { dot: 'rdot-red', label: 'Erro' }
+      };
+
+      const listHtml = r.items.map(item => {
+        const cfg = statusConfig[item.status] || statusConfig.error;
+        return `
         <div class="result-item ${item.status}">
-          <div class="result-dot ${item.status === 'success' ? 'rdot-green' : item.status === 'not_found' ? 'rdot-amber' : 'rdot-red'}"></div>
+          <div class="result-dot ${cfg.dot}"></div>
           <div class="result-rastreio">${item.rastreio}</div>
+          <div class="result-status-label">${cfg.label}</div>
           <div class="result-msg">${item.message}</div>
           ${item.pedido ? `<div class="result-pedido">${item.pedido}</div>` : ''}
         </div>
-      `).join('');
+      `}).join('');
 
       document.getElementById('resultList').innerHTML = listHtml;
 

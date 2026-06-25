@@ -117,7 +117,7 @@
 
 .result-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-bottom: 16px;
 }
@@ -126,40 +126,51 @@
   border-radius: 10px;
   padding: 14px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
-.rstat-value { font-size: 24px; font-weight: 600; }
-.rstat-label { font-size: 11px; margin-top: 3px; }
+.rstat-icon { font-size: 20px; margin-bottom: 2px; }
+.rstat-value { font-size: 22px; font-weight: 600; }
+.rstat-label { font-size: 11px; }
 .rstat-green { background: #f0fdf4; }
-.rstat-green .rstat-value { color: #16a34a; }
+.rstat-green .rstat-icon, .rstat-green .rstat-value { color: #16a34a; }
 .rstat-green .rstat-label { color: #4ade80; }
+.rstat-blue { background: #eff6ff; }
+.rstat-blue .rstat-icon, .rstat-blue .rstat-value { color: #2563eb; }
+.rstat-blue .rstat-label { color: #60a5fa; }
 .rstat-amber { background: #fffbeb; }
-.rstat-amber .rstat-value { color: #d97706; }
+.rstat-amber .rstat-icon, .rstat-amber .rstat-value { color: #d97706; }
 .rstat-amber .rstat-label { color: #fbbf24; }
 .rstat-red { background: #fef2f2; }
-.rstat-red .rstat-value { color: #dc2626; }
+.rstat-red .rstat-icon, .rstat-red .rstat-value { color: #dc2626; }
 .rstat-red .rstat-label { color: #f87171; }
 
 .result-list { display: flex; flex-direction: column; gap: 0; border-radius: 8px; overflow: hidden; border: 0.5px solid #e8eaf0; max-height: 300px; overflow-y: auto; }
 
 .result-item {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 14px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px;
   border-bottom: 0.5px solid #f4f5f9;
   font-size: 12px;
 }
 .result-item:last-child { border-bottom: none; }
 .result-item.success { background: #fafffe; }
+.result-item.already_fulfilled { background: #f5f9ff; }
 .result-item.not_found { background: #fffef5; }
 .result-item.error { background: #fff9f9; }
 
 .result-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .rdot-green { background: #22c55e; }
+.rdot-blue { background: #3b82f6; }
 .rdot-amber { background: #f59e0b; }
 .rdot-red { background: #ef4444; }
 
-.result-rastreio { font-weight: 500; color: #1a1d2e; width: 140px; flex-shrink: 0; }
-.result-msg { flex: 1; color: #6b7280; }
-.result-pedido { color: #7c3aed; font-weight: 500; }
+.result-rastreio { font-weight: 500; color: #1a1d2e; width: 130px; flex-shrink: 0; font-size: 11px; }
+.result-status-label { width: 130px; flex-shrink: 0; font-weight: 500; font-size: 11px; color: #6b7280; }
+.result-msg { flex: 1; color: #9ea3b5; font-size: 11px; }
+.result-pedido { color: #7c3aed; font-weight: 500; font-size: 11px; }
 
 /* LOTES */
 .batch-item {
