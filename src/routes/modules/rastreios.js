@@ -155,32 +155,50 @@ async function fetchShopifyOrders(dateFrom, dateTo) {
 
   let allOrders = [];
   let url = `${SHOPIFY_URL}/admin/api/2024-01/orders.json?status=any&created_at_min=${dateFrom}&created_at_max=${dateToStr}&limit=250&fields=id,name,created_at,fulfillment_status,shipping_address,fulfillments`;
+  let page = 0;
 
   while (url) {
+    page++;
     const response = await fetch(url, {
       headers: {
         'X-Shopify-Access-Token': SHOPIFY_TOKEN,
         'Content-Type': 'application/json'
       }
     });
+
+    if (!response.ok) {
+      console.error(`Shopify API erro página ${page}: ${response.status}`);
+      break;
+    }
+
     const data = await response.json();
-    allOrders = allOrders.concat(data.orders || []);
+    const orders = data.orders || [];
+    allOrders = allOrders.concat(orders);
+    console.log(`Página ${page}: ${orders.length} pedidos (total: ${allOrders.length})`);
 
     // Paginação via Link header
     const linkHeader = response.headers.get('Link') || '';
     const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
     url = nextMatch ? nextMatch[1] : null;
+
+    // Rate limit safety
+    if (url) await new Promise(r => setTimeout(r, 300));
   }
 
+  console.log(`Total pedidos Shopify: ${allOrders.length}`);
+
   // Filtrar: unfulfilled OU fulfilled sem rastreio
-  return allOrders.filter(order => {
-    if (!order.fulfillment_status) return true; // unfulfilled
+  const filtered = allOrders.filter(order => {
+    if (!order.fulfillment_status) return true;
     if (order.fulfillment_status === 'fulfilled') {
       const hasTracking = (order.fulfillments || []).some(f => f.tracking_number);
-      return !hasTracking; // fulfilled mas sem rastreio
+      return !hasTracking;
     }
     return false;
   });
+
+  console.log(`Pedidos elegíveis após filtro: ${filtered.length}`);
+  return filtered;
 }
 
 async function getFulfillmentOrderId(orderId) {
