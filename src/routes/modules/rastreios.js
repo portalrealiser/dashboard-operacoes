@@ -92,7 +92,7 @@ router.post('/processar', requireAuth, upload.single('planilha'), async (req, re
     const results = { success: 0, already_fulfilled: 0, not_found: 0, error: 0, items: [] };
 
     // Buscar pedidos da Shopify no período
-    const shopifyOrders = await fetchShopifyOrders(date_from, date_to);
+    const { all: allOrders, eligible: shopifyOrders } = await fetchShopifyOrders(date_from, date_to);
 
     for (const row of rows) {
       const rastreio = String(row.OBJETO || '').trim();
@@ -101,16 +101,31 @@ router.post('/processar', requireAuth, upload.single('planilha'), async (req, re
       if (!rastreio || !cep) continue;
 
       try {
-        // Filtrar pedidos pelo CEP
+        // Buscar nos elegíveis (sem rastreio)
         const matches = shopifyOrders.filter(order => {
           const orderCep = String(order.shipping_address?.zip || '').replace(/\D/g, '');
           return orderCep === cep;
         });
 
         if (matches.length === 0) {
-          results.not_found++;
-          results.items.push({ rastreio, cep, status: 'not_found', pedido: null, message: 'Nenhum pedido encontrado no período' });
-          await logResult(pool, batchId, rastreio, cep, 'not_found', null, null, 'Nenhum pedido encontrado no período', date_from, date_to);
+          // Verificar se existe pedido com esse CEP mas já tem rastreio
+          const alreadyHas = allOrders.filter(order => {
+            const orderCep = String(order.shipping_address?.zip || '').replace(/\D/g, '');
+            const hasTracking = (order.fulfillments || []).some(f => f.tracking_number);
+            return orderCep === cep && hasTracking;
+          });
+
+          if (alreadyHas.length > 0) {
+            alreadyHas.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            const order = alreadyHas[0];
+            results.already_fulfilled++;
+            results.items.push({ rastreio, cep, status: 'already_fulfilled', pedido: order.name, message: `Pedido ${order.name} já possui rastreio` });
+            await logResult(pool, batchId, rastreio, cep, 'already_fulfilled', order.id, order.name, `Pedido ${order.name} já possui rastreio`, date_from, date_to);
+          } else {
+            results.not_found++;
+            results.items.push({ rastreio, cep, status: 'not_found', pedido: null, message: 'Nenhum pedido encontrado no período' });
+            await logResult(pool, batchId, rastreio, cep, 'not_found', null, null, 'Nenhum pedido encontrado no período', date_from, date_to);
+          }
           continue;
         }
 
@@ -229,7 +244,7 @@ async function fetchShopifyOrders(dateFrom, dateTo) {
   });
 
   console.log(`Pedidos elegíveis após filtro: ${filtered.length}`);
-  return filtered;
+  return { all: allOrders, eligible: filtered };
 }
 
 async function getFulfillmentOrderId(orderId) {
