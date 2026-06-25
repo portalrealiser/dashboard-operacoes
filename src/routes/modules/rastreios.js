@@ -101,16 +101,22 @@ router.post('/processar', requireAuth, upload.single('planilha'), async (req, re
         const order = matches[0];
 
         // Buscar fulfillment_order_id
-        const fulfillmentOrderId = await getFulfillmentOrderId(order.id);
-        if (!fulfillmentOrderId) {
+        const fulfillmentInfo = await getFulfillmentOrderId(order.id);
+        if (!fulfillmentInfo) {
           results.error++;
           results.items.push({ rastreio, cep, status: 'error', pedido: order.name, message: 'Erro ao obter fulfillment order' });
           await logResult(pool, batchId, rastreio, cep, 'error', order.id, order.name, 'Erro ao obter fulfillment order', date_from, date_to);
           continue;
         }
 
-        // Vincular rastreio
-        await createFulfillment(fulfillmentOrderId, rastreio);
+        // Vincular ou atualizar rastreio
+        if (fulfillmentInfo.type === 'create') {
+          await createFulfillment(fulfillmentInfo.id, rastreio);
+        } else {
+          const fulfillmentId = await getFulfillmentId(order.id);
+          if (!fulfillmentId) throw new Error('Fulfillment sem rastreio não encontrado');
+          await updateTracking(fulfillmentId, rastreio);
+        }
 
         results.success++;
         results.items.push({ rastreio, cep, status: 'success', pedido: order.name, message: `Vinculado ao pedido ${order.name}` });
@@ -148,7 +154,7 @@ async function fetchShopifyOrders(dateFrom, dateTo) {
   const dateToStr = dateTo2.toISOString().split('T')[0];
 
   let allOrders = [];
-  let url = `${SHOPIFY_URL}/admin/api/2024-01/orders.json?status=any&fulfillment_status=unfulfilled&created_at_min=${dateFrom}&created_at_max=${dateToStr}&limit=250&fields=id,name,created_at,fulfillment_status,shipping_address`;
+  let url = `${SHOPIFY_URL}/admin/api/2024-01/orders.json?status=any&created_at_min=${dateFrom}&created_at_max=${dateToStr}&limit=250&fields=id,name,created_at,fulfillment_status,shipping_address,fulfillments`;
 
   while (url) {
     const response = await fetch(url, {
@@ -166,7 +172,15 @@ async function fetchShopifyOrders(dateFrom, dateTo) {
     url = nextMatch ? nextMatch[1] : null;
   }
 
-  return allOrders;
+  // Filtrar: unfulfilled OU fulfilled sem rastreio
+  return allOrders.filter(order => {
+    if (!order.fulfillment_status) return true; // unfulfilled
+    if (order.fulfillment_status === 'fulfilled') {
+      const hasTracking = (order.fulfillments || []).some(f => f.tracking_number);
+      return !hasTracking; // fulfilled mas sem rastreio
+    }
+    return false;
+  });
 }
 
 async function getFulfillmentOrderId(orderId) {
@@ -178,7 +192,51 @@ async function getFulfillmentOrderId(orderId) {
   });
   const data = await response.json();
   const open = (data.fulfillment_orders || []).find(fo => fo.status === 'open');
-  return open ? open.id : null;
+  if (open) return { type: 'create', id: open.id };
+
+  // Se não tiver open, buscar fulfillment existente sem rastreio para atualizar
+  const fulfilled = (data.fulfillment_orders || []).find(fo => fo.status === 'closed' || fo.status === 'fulfilled');
+  if (fulfilled) return { type: 'update', orderId };
+
+  return null;
+}
+
+async function getFulfillmentId(orderId) {
+  const SHOPIFY_URL = process.env.SHOPIFY_URL;
+  const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
+
+  const response = await fetch(`${SHOPIFY_URL}/admin/api/2024-01/orders/${orderId}/fulfillments.json`, {
+    headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN }
+  });
+  const data = await response.json();
+  const noTracking = (data.fulfillments || []).find(f => !f.tracking_number);
+  return noTracking ? noTracking.id : null;
+}
+
+async function updateTracking(fulfillmentId, trackingNumber) {
+  const SHOPIFY_URL = process.env.SHOPIFY_URL;
+  const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN;
+
+  const response = await fetch(`${SHOPIFY_URL}/admin/api/2024-01/fulfillments/${fulfillmentId}/update_tracking.json`, {
+    method: 'POST',
+    headers: {
+      'X-Shopify-Access-Token': SHOPIFY_TOKEN,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      fulfillment: {
+        tracking_info: {
+          number: trackingNumber,
+          company: 'Correios',
+          url: 'https://rastreamento.correios.com.br/app/index.php'
+        },
+        notify_customer: false
+      }
+    })
+  });
+  const data = await response.json();
+  if (!data.fulfillment) throw new Error(JSON.stringify(data.errors || 'Erro ao atualizar rastreio'));
+  return data.fulfillment;
 }
 
 async function createFulfillment(fulfillmentOrderId, trackingNumber) {
@@ -199,7 +257,7 @@ async function createFulfillment(fulfillmentOrderId, trackingNumber) {
           company: 'Correios',
           url: 'https://rastreamento.correios.com.br/app/index.php'
         },
-        notify_customer: true
+        notify_customer: false
       }
     })
   });
