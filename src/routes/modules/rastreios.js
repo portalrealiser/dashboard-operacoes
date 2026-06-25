@@ -29,6 +29,7 @@ router.get('/', requireAuth, async (req, res) => {
         MIN(created_at) as created_at,
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE status = 'success') as success,
+        COUNT(*) FILTER (WHERE status = 'already_fulfilled') as already_fulfilled,
         COUNT(*) FILTER (WHERE status = 'not_found') as not_found,
         COUNT(*) FILTER (WHERE status = 'error') as error,
         date_from,
@@ -50,7 +51,24 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
-// Upload e processamento da planilha
+// Detalhes de um lote específico
+router.get('/lote/:batchId', requireAuth, async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const batchResult = await pool.query(`
+      SELECT batch_id, MIN(created_at) as created_at, date_from, date_to
+      FROM dashboard.rastreios_log WHERE batch_id = $1
+      GROUP BY batch_id, date_from, date_to
+    `, [batchId]);
+    const itemsResult = await pool.query(`
+      SELECT * FROM dashboard.rastreios_log WHERE batch_id = $1 ORDER BY created_at ASC
+    `, [batchId]);
+    if (!batchResult.rows.length) return res.json({ ok: false });
+    res.json({ ok: true, batch: batchResult.rows[0], items: itemsResult.rows });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
 router.post('/processar', requireAuth, upload.single('planilha'), async (req, res) => {
   try {
     const { date_from, date_to } = req.body;
@@ -314,20 +332,26 @@ async function logResult(pool, batchId, rastreio, cep, status, orderId, orderNam
 function rastreiosPage(stats, logs, batches) {
   const batchesHtml = batches.length === 0
     ? `<div class="empty-state"><i class="ti ti-history"></i><p>Nenhum lote processado ainda</p></div>`
-    : batches.map(b => `
-      <div class="batch-item">
+    : batches.map(b => {
+      const dataBR = new Date(b.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      const de = b.date_from ? new Date(b.date_from + 'T12:00:00').toLocaleDateString('pt-BR') : '-';
+      const ate = b.date_to ? new Date(b.date_to + 'T12:00:00').toLocaleDateString('pt-BR') : '-';
+      return `
+      <div class="batch-item batch-clickable" onclick="abrirLote('${b.batch_id}')">
         <div class="batch-header">
           <div>
-            <div class="batch-title">Lote ${new Date(b.created_at).toLocaleString('pt-BR')}</div>
-            <div class="batch-period">Período: ${b.date_from ? new Date(b.date_from).toLocaleDateString('pt-BR') : '-'} até ${b.date_to ? new Date(b.date_to).toLocaleDateString('pt-BR') : '-'}</div>
+            <div class="batch-title">Lote ${dataBR}</div>
+            <div class="batch-period">Período: ${de} até ${ate} · Clique para ver detalhes</div>
           </div>
           <div class="batch-stats">
             <span class="bstat bstat-green"><i class="ti ti-check"></i> ${b.success}</span>
-            <span class="bstat bstat-amber"><i class="ti ti-search"></i> ${b.not_found}</span>
+            <span class="bstat bstat-blue"><i class="ti ti-refresh"></i> ${b.already_fulfilled || 0}</span>
+            <span class="bstat bstat-amber"><i class="ti ti-search-off"></i> ${b.not_found}</span>
             <span class="bstat bstat-red"><i class="ti ti-x"></i> ${b.error}</span>
           </div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
