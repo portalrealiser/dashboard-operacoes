@@ -114,9 +114,21 @@ router.post('/processar', requireAuth, upload.single('planilha'), async (req, re
           await createFulfillment(fulfillmentInfo.id, rastreio);
         } else {
           const fulfillmentId = await getFulfillmentId(order.id);
-          if (!fulfillmentId) throw new Error('Fulfillment sem rastreio não encontrado');
+          if (!fulfillmentId) {
+            // Pedido já tem rastreio vinculado — marcar como já processado
+            results.success++;
+            results.items.push({ rastreio, cep, status: 'success', pedido: order.name, message: `Rastreio já vinculado ao pedido ${order.name}` });
+            await logResult(pool, batchId, rastreio, cep, 'success', order.id, order.name, `Rastreio já vinculado ao pedido ${order.name}`, date_from, date_to);
+            const idx = shopifyOrders.findIndex(o => o.id === order.id);
+            if (idx !== -1) shopifyOrders[idx].fulfillment_status = 'done';
+            await new Promise(r => setTimeout(r, 600));
+            continue;
+          }
           await updateTracking(fulfillmentId, rastreio);
         }
+
+        // Delay para respeitar rate limit da Shopify (2 calls/seg)
+        await new Promise(r => setTimeout(r, 600));
 
         results.success++;
         results.items.push({ rastreio, cep, status: 'success', pedido: order.name, message: `Vinculado ao pedido ${order.name}` });
@@ -228,8 +240,14 @@ async function getFulfillmentId(orderId) {
     headers: { 'X-Shopify-Access-Token': SHOPIFY_TOKEN }
   });
   const data = await response.json();
-  const noTracking = (data.fulfillments || []).find(f => !f.tracking_number);
-  return noTracking ? noTracking.id : null;
+  const fulfillments = data.fulfillments || [];
+
+  // Priorizar fulfillment sem rastreio
+  const noTracking = fulfillments.find(f => !f.tracking_number);
+  if (noTracking) return noTracking.id;
+
+  // Se todos já têm rastreio, retornar null (já processado)
+  return null;
 }
 
 async function updateTracking(fulfillmentId, trackingNumber) {
