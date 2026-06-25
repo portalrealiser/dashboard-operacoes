@@ -83,10 +83,10 @@ router.post('/processar', requireAuth, upload.single('planilha'), async (req, re
       if (!rastreio || !cep) continue;
 
       try {
-        // Filtrar pedidos pelo CEP
+        // Filtrar pedidos pelo CEP (unfulfilled OU fulfilled sem rastreio)
         const matches = shopifyOrders.filter(order => {
           const orderCep = String(order.shipping_address?.zip || '').replace(/\D/g, '');
-          return orderCep === cep && !order.fulfillment_status;
+          return orderCep === cep;
         });
 
         if (matches.length === 0) {
