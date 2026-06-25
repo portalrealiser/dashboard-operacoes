@@ -127,6 +127,7 @@ router.post('/processar', requireAuth, upload.single('planilha'), async (req, re
         if (idx !== -1) shopifyOrders[idx].fulfillment_status = 'fulfilled';
 
       } catch (err) {
+        console.error(`ERRO rastreio ${rastreio} CEP ${cep}:`, err.message);
         results.error++;
         results.items.push({ rastreio, cep, status: 'error', pedido: null, message: err.message });
         await logResult(pool, batchId, rastreio, cep, 'error', null, null, err.message, date_from, date_to);
